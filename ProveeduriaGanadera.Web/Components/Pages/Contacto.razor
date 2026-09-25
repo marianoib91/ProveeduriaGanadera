@@ -1,0 +1,71 @@
+@page "/contacto"
+@using ProveeduriaGanadera.Application.Contacto
+@using ProveeduriaGanadera.UI.Components
+@inject IContactoService ContactoService
+
+<PageTitle>Contacto</PageTitle>
+
+<TituloSeccion Texto="Contacto" />
+
+<div class="contacto-layout">
+    <div class="contacto-info">
+        <h2 class="fuente-titulo">Nuestros datos</h2>
+        <p><strong>Ubicación:</strong> Vedia, Provincia de Buenos Aires</p>
+        <p><strong>Teléfono:</strong> [a completar]</p>
+        <p><strong>Email:</strong> [a completar]</p>
+        <p><strong>Horario de atención:</strong> [a completar]</p>
+    </div>
+
+    <div class="contacto-formulario">
+        <h2 class="fuente-titulo">Envianos un mensaje</h2>
+        @if (_enviado)
+        {
+            <div class="alert alert-success">¡Gracias! Te vamos a responder a la brevedad.</div>
+        }
+        else
+        {
+            <EditForm Model="_form" FormName="contacto" OnValidSubmit="Enviar" method="post">
+                <div class="mb-3">
+                    <label>Nombre</label>
+                    <InputText class="form-control" @bind-Value="_form.Nombre" />
+                </div>
+                <div class="mb-3">
+                    <label>Email</label>
+                    <InputText class="form-control" @bind-Value="_form.Email" />
+                </div>
+                <div class="mb-3">
+                    <label>Mensaje</label>
+                    <InputTextArea class="form-control" rows="5" @bind-Value="_form.Mensaje" />
+                </div>
+
+                @if (_error is not null)
+                {
+                    <div class="alert alert-warning">@_error</div>
+                }
+
+                <button type="submit" class="btn btn-primary">Enviar</button>
+            </EditForm>
+        }
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private MensajeContactoDto _form { get; set; } = new();
+
+    private bool _enviado;
+    private string? _error;
+
+    private async Task Enviar()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_form.Nombre) || string.IsNullOrWhiteSpace(_form.Email) || string.IsNullOrWhiteSpace(_form.Mensaje))
+        {
+            _error = "Completá todos los campos.";
+            return;
+        }
+
+        await ContactoService.EnviarMensajeAsync(_form);
+        _enviado = true;
+    }
+}

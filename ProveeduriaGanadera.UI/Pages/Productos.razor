@@ -1,0 +1,492 @@
+@page "/admin/productos"
+@attribute [Authorize(Roles = "Admin,Empleado")]
+@rendermode InteractiveServer
+@using ProveeduriaGanadera.Application.Categorias
+@using ProveeduriaGanadera.Application.Especies
+@using ProveeduriaGanadera.Application.Productos
+@inject IProductoService ProductoService
+@inject ICategoriaService CategoriaService
+@inject IEspecieService EspecieService
+
+<PageTitle>Catálogo</PageTitle>
+
+<TituloSeccion Texto="Catálogo" />
+
+@if (_categorias is null || _especies is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else
+{
+    @if (!_mostrarFormulario)
+    {
+        <button type="button" class="btn btn-primary mb-3" @onclick="AbrirAlta">Agregar producto</button>
+    }
+    else
+    {
+        <div class="border rounded p-3 mb-3">
+            <EditForm Model="_form" OnValidSubmit="Guardar">
+                <div class="row g-2 mb-2">
+                    <div class="col-3">
+                        <label>Nombre</label>
+                        <InputText class="form-control" @bind-Value="_form.Nombre" />
+                    </div>
+                    <div class="col-3">
+                        <label>Descripción</label>
+                        <InputText class="form-control" @bind-Value="_form.Descripcion" />
+                    </div>
+                    <div class="col-2">
+                        <label>Unidad de medida</label>
+                        <InputText class="form-control" @bind-Value="_form.UnidadDeMedida" placeholder="unidad, kg, litro..." />
+                    </div>
+                    <div class="col-2">
+                        <label>Categoría</label>
+                        <div class="d-flex gap-1">
+                            <InputSelect class="form-select" @bind-Value="_form.CategoriaId">
+                                <option value="0">-- elegir --</option>
+                                @foreach (var categoria in _categorias)
+                                {
+                                    <option value="@categoria.Id">@categoria.Nombre</option>
+                                }
+                            </InputSelect>
+                            <button type="button" class="btn btn-outline-secondary" title="Nueva categoría" @onclick="AbrirNuevaCategoria">+</button>
+                        </div>
+                        @if (_mostrarNuevaCategoria)
+                        {
+                            <div class="border rounded p-2 mt-1">
+                                <input class="form-control form-control-sm mb-1" placeholder="Nombre" @bind="_nuevaCategoriaNombre" @bind:event="oninput" />
+                                <input class="form-control form-control-sm mb-1" placeholder="Descripción" @bind="_nuevaCategoriaDescripcion" @bind:event="oninput" />
+                                <button type="button" class="btn btn-sm btn-primary" @onclick="CrearCategoriaInline">Crear</button>
+                                <button type="button" class="btn btn-sm btn-secondary" @onclick="CancelarNuevaCategoria">Cancelar</button>
+                            </div>
+                        }
+                    </div>
+                    <div class="col-2">
+                        <label>Precio actual</label>
+                        <InputNumber class="form-control" @bind-Value="_form.PrecioActual" />
+                    </div>
+                </div>
+
+                <div class="row g-2 mb-2">
+                    <div class="col-4">
+                        <label>Código de barras</label>
+                        <div class="d-flex gap-1">
+                            <InputText class="form-control" @bind-Value="_form.CodigoDeBarras" placeholder="Escanear o dejar vacío" />
+                            <button type="button" class="btn btn-outline-secondary text-nowrap" @onclick="GenerarCodigoInterno">Generar interno</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-2 mb-2 align-items-start">
+                    <div class="col-2">
+                        <label>Stock actual</label>
+                        <InputNumber class="form-control" @bind-Value="_form.StockActual" />
+                    </div>
+                    <div class="col-2">
+                        <label>Alicuota IVA (%)</label>
+                        <InputNumber class="form-control" @bind-Value="_form.AlicuotaIva" />
+                    </div>
+                    <div class="col-2 form-check mt-4">
+                        <InputCheckbox class="form-check-input" @bind-Value="_form.Activo" id="activo" />
+                        <label class="form-check-label" for="activo">Activo</label>
+                    </div>
+                    <div class="col-4">
+                        <label>Especies</label>
+                        <div class="d-flex flex-wrap gap-3 align-items-center">
+                            @foreach (var especie in _especies)
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="especie-@especie.Id"
+                                           checked="@_form.EspecieIds.Contains(especie.Id)"
+                                           @onchange="e => ToggleEspecie(especie.Id, (bool)e.Value!)" />
+                                    <label class="form-check-label" for="especie-@especie.Id">@especie.Nombre</label>
+                                </div>
+                            }
+                            <button type="button" class="btn btn-outline-secondary btn-sm" title="Nueva especie" @onclick="AbrirNuevaEspecie">+</button>
+                        </div>
+                        @if (_mostrarNuevaEspecie)
+                        {
+                            <div class="border rounded p-2 mt-1">
+                                <input class="form-control form-control-sm mb-1" placeholder="Nombre" @bind="_nuevaEspecieNombre" @bind:event="oninput" />
+                                <input class="form-control form-control-sm mb-1" placeholder="Término coloquial (rodeo, majada...)" @bind="_nuevaEspecieTermino" @bind:event="oninput" />
+                                <button type="button" class="btn btn-sm btn-primary" @onclick="CrearEspecieInline">Crear</button>
+                                <button type="button" class="btn btn-sm btn-secondary" @onclick="CancelarNuevaEspecie">Cancelar</button>
+                            </div>
+                        }
+                    </div>
+                    <div class="col-2">
+                        <button type="submit" class="btn btn-primary">@(_editandoId is null ? "Agregar" : "Guardar cambios")</button>
+                        <button type="button" class="btn btn-secondary" @onclick="CerrarFormulario">Cancelar</button>
+                    </div>
+                </div>
+            </EditForm>
+
+            @if (_editandoId is not null)
+            {
+                <hr />
+                <label>Imágenes</label>
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    @foreach (var imagen in _form.Imagenes.OrderBy(i => i.Orden))
+                    {
+                        <div class="position-relative">
+                            <img src="@imagen.RutaArchivo" style="width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #dee2e6" alt="Imagen del producto" />
+                            <button type="button" class="btn btn-sm btn-danger position-absolute top-0 end-0 p-0" style="width:20px;height:20px;line-height:1;" title="Eliminar imagen" @onclick="() => EliminarImagen(imagen.Id)">x</button>
+                        </div>
+                    }
+                </div>
+                <InputFile OnChange="SubirImagenes" multiple accept="image/*" />
+                @if (_subiendoImagen)
+                {
+                    <span class="text-muted ms-2">Subiendo...</span>
+                }
+            }
+        </div>
+    }
+
+    @if (_mensaje is not null)
+    {
+        <div class="alert alert-warning">@_mensaje</div>
+    }
+
+    <div class="row g-2 mb-3 align-items-end">
+        <div class="col-3">
+            <label>Buscar</label>
+            <input type="search" class="form-control" placeholder="Nombre o descripción..."
+                   @bind="_busqueda" @bind:event="oninput" />
+        </div>
+        <div class="col-3">
+            <label>Filtrar por categoría</label>
+            <select class="form-select" @bind="_filtroCategoriaId">
+                <option value="0">Todas</option>
+                @foreach (var categoria in _categorias)
+                {
+                    <option value="@categoria.Id">@categoria.Nombre</option>
+                }
+            </select>
+        </div>
+        <div class="col-3">
+            <label>Filtrar por especie</label>
+            <select class="form-select" @bind="_filtroEspecieId">
+                <option value="0">Todas</option>
+                @foreach (var especie in _especies)
+                {
+                    <option value="@especie.Id">@especie.Nombre</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (_productos is null)
+    {
+        <p><em>Cargando...</em></p>
+    }
+    else if (_productos.Count == 0)
+    {
+        <p><em>Todavía no hay productos cargados.</em></p>
+    }
+    else
+    {
+        var visibles = ProductosVisibles().ToList();
+        <div class="tabla-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th style="cursor:pointer" @onclick='() => Ordenar("Nombre")'>Nombre @Indicador("Nombre")</th>
+                        <th>Código</th>
+                        <th style="cursor:pointer" @onclick='() => Ordenar("Categoria")'>Categoría @Indicador("Categoria")</th>
+                        <th>Especies</th>
+                        <th style="cursor:pointer" @onclick='() => Ordenar("Precio")'>Precio @Indicador("Precio")</th>
+                        <th style="cursor:pointer" @onclick='() => Ordenar("Stock")'>Stock @Indicador("Stock")</th>
+                        <th style="cursor:pointer" @onclick='() => Ordenar("Activo")'>Activo @Indicador("Activo")</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (visibles.Count == 0)
+                    {
+                        <tr><td colspan="8"><em>No hay productos que coincidan con el filtro.</em></td></tr>
+                    }
+                    @foreach (var producto in visibles)
+                    {
+                        <tr>
+                            <td>@producto.Nombre</td>
+                            <td>@producto.CodigoDeBarras</td>
+                            <td>@producto.CategoriaNombre</td>
+                            <td>@string.Join(", ", producto.EspecieNombres)</td>
+                            <td>$@producto.PrecioActual.ToString("N2")</td>
+                            <td>@producto.StockActual</td>
+                            <td>@(producto.Activo ? "Sí" : "No")</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => Editar(producto)">Editar</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => Eliminar(producto.Id)">Eliminar</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private List<ProductoDto>? _productos;
+    private List<CategoriaDto>? _categorias;
+    private List<EspecieDto>? _especies;
+    private ProductoDto _form = new() { Activo = true };
+    private int? _editandoId;
+    private string? _mensaje;
+    private bool _mostrarFormulario;
+    private bool _subiendoImagen;
+
+    private string _sortColumna = "Nombre";
+    private bool _sortAscendente = true;
+    private int _filtroCategoriaId;
+    private int _filtroEspecieId;
+    private string _busqueda = string.Empty;
+
+    private bool _mostrarNuevaCategoria;
+    private string _nuevaCategoriaNombre = string.Empty;
+    private string _nuevaCategoriaDescripcion = string.Empty;
+
+    private bool _mostrarNuevaEspecie;
+    private string _nuevaEspecieNombre = string.Empty;
+    private string _nuevaEspecieTermino = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _categorias = await CategoriaService.ListarAsync();
+        _especies = await EspecieService.ListarAsync();
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        _productos = await ProductoService.ListarAsync();
+    }
+
+    private void ToggleEspecie(int especieId, bool marcado)
+    {
+        if (marcado && !_form.EspecieIds.Contains(especieId))
+        {
+            _form.EspecieIds.Add(especieId);
+        }
+        else if (!marcado)
+        {
+            _form.EspecieIds.Remove(especieId);
+        }
+    }
+
+    private void Ordenar(string columna)
+    {
+        if (_sortColumna == columna)
+        {
+            _sortAscendente = !_sortAscendente;
+        }
+        else
+        {
+            _sortColumna = columna;
+            _sortAscendente = true;
+        }
+    }
+
+    private string Indicador(string columna) => _sortColumna != columna ? "" : (_sortAscendente ? "▲" : "▼");
+
+    private IEnumerable<ProductoDto> ProductosVisibles()
+    {
+        if (_productos is null)
+        {
+            return Enumerable.Empty<ProductoDto>();
+        }
+
+        IEnumerable<ProductoDto> query = _productos;
+
+        if (!string.IsNullOrWhiteSpace(_busqueda))
+        {
+            query = query.Where(p =>
+                p.Nombre.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ||
+                p.Descripcion.Contains(_busqueda, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (_filtroCategoriaId != 0)
+        {
+            query = query.Where(p => p.CategoriaId == _filtroCategoriaId);
+        }
+
+        if (_filtroEspecieId != 0)
+        {
+            query = query.Where(p => p.EspecieIds.Contains(_filtroEspecieId));
+        }
+
+        query = _sortColumna switch
+        {
+            "Categoria" => _sortAscendente ? query.OrderBy(p => p.CategoriaNombre) : query.OrderByDescending(p => p.CategoriaNombre),
+            "Precio" => _sortAscendente ? query.OrderBy(p => p.PrecioActual) : query.OrderByDescending(p => p.PrecioActual),
+            "Stock" => _sortAscendente ? query.OrderBy(p => p.StockActual) : query.OrderByDescending(p => p.StockActual),
+            "Activo" => _sortAscendente ? query.OrderBy(p => p.Activo) : query.OrderByDescending(p => p.Activo),
+            _ => _sortAscendente ? query.OrderBy(p => p.Nombre) : query.OrderByDescending(p => p.Nombre),
+        };
+
+        return query;
+    }
+
+    private void AbrirAlta()
+    {
+        _editandoId = null;
+        _form = new ProductoDto { Activo = true };
+        _mensaje = null;
+        _mostrarFormulario = true;
+    }
+
+    private void CerrarFormulario()
+    {
+        _mostrarFormulario = false;
+        _editandoId = null;
+        _mensaje = null;
+        _form = new ProductoDto { Activo = true };
+        CancelarNuevaCategoria();
+        CancelarNuevaEspecie();
+    }
+
+    private async Task Guardar()
+    {
+        _mensaje = null;
+        if (string.IsNullOrWhiteSpace(_form.Nombre))
+        {
+            _mensaje = "El nombre es obligatorio.";
+            return;
+        }
+
+        if (_form.CategoriaId == 0)
+        {
+            _mensaje = "Elegí o creá una categoría.";
+            return;
+        }
+
+        if (_editandoId is null)
+        {
+            await ProductoService.CrearAsync(_form);
+        }
+        else
+        {
+            _form.Id = _editandoId.Value;
+            await ProductoService.ActualizarAsync(_form);
+        }
+
+        _mostrarFormulario = false;
+        _form = new ProductoDto { Activo = true };
+        _editandoId = null;
+        await Cargar();
+    }
+
+    private void Editar(ProductoDto producto)
+    {
+        _editandoId = producto.Id;
+        _mensaje = null;
+        _form = new ProductoDto
+        {
+            Id = producto.Id,
+            Nombre = producto.Nombre,
+            Descripcion = producto.Descripcion,
+            UnidadDeMedida = producto.UnidadDeMedida,
+            StockActual = producto.StockActual,
+            Activo = producto.Activo,
+            AlicuotaIva = producto.AlicuotaIva,
+            PrecioActual = producto.PrecioActual,
+            CodigoDeBarras = producto.CodigoDeBarras,
+            CategoriaId = producto.CategoriaId,
+            EspecieIds = new List<int>(producto.EspecieIds),
+            Imagenes = new List<ImagenProductoDto>(producto.Imagenes),
+        };
+        _mostrarFormulario = true;
+    }
+
+    private async Task SubirImagenes(InputFileChangeEventArgs e)
+    {
+        if (_editandoId is null)
+        {
+            return;
+        }
+
+        _subiendoImagen = true;
+        foreach (var archivo in e.GetMultipleFiles(10))
+        {
+            await using var stream = archivo.OpenReadStream(10 * 1024 * 1024);
+            var imagen = await ProductoService.AgregarImagenAsync(_editandoId.Value, stream, archivo.Name);
+            _form.Imagenes.Add(imagen);
+        }
+
+        _subiendoImagen = false;
+        await Cargar();
+    }
+
+    private async Task EliminarImagen(int imagenId)
+    {
+        await ProductoService.EliminarImagenAsync(imagenId);
+        _form.Imagenes.RemoveAll(i => i.Id == imagenId);
+        await Cargar();
+    }
+
+    private async Task GenerarCodigoInterno()
+    {
+        _form.CodigoDeBarras = await ProductoService.GenerarCodigoInternoAsync();
+    }
+
+    private async Task Eliminar(int id)
+    {
+        _mensaje = null;
+        var eliminado = await ProductoService.EliminarAsync(id);
+        if (!eliminado)
+        {
+            _mensaje = "No se puede eliminar: hay pedidos que ya usan este producto. Podés desmarcar 'Activo' en su lugar.";
+            return;
+        }
+
+        await Cargar();
+    }
+
+    private void AbrirNuevaCategoria() => _mostrarNuevaCategoria = true;
+
+    private void CancelarNuevaCategoria()
+    {
+        _mostrarNuevaCategoria = false;
+        _nuevaCategoriaNombre = string.Empty;
+        _nuevaCategoriaDescripcion = string.Empty;
+    }
+
+    private async Task CrearCategoriaInline()
+    {
+        if (string.IsNullOrWhiteSpace(_nuevaCategoriaNombre))
+        {
+            _mensaje = "El nombre de la categoría es obligatorio.";
+            return;
+        }
+
+        var creada = await CategoriaService.CrearAsync(new CategoriaDto { Nombre = _nuevaCategoriaNombre, Descripcion = _nuevaCategoriaDescripcion });
+        _categorias = await CategoriaService.ListarAsync();
+        _form.CategoriaId = creada.Id;
+        CancelarNuevaCategoria();
+    }
+
+    private void AbrirNuevaEspecie() => _mostrarNuevaEspecie = true;
+
+    private void CancelarNuevaEspecie()
+    {
+        _mostrarNuevaEspecie = false;
+        _nuevaEspecieNombre = string.Empty;
+        _nuevaEspecieTermino = string.Empty;
+    }
+
+    private async Task CrearEspecieInline()
+    {
+        if (string.IsNullOrWhiteSpace(_nuevaEspecieNombre))
+        {
+            _mensaje = "El nombre de la especie es obligatorio.";
+            return;
+        }
+
+        var creada = await EspecieService.CrearAsync(new EspecieDto { Nombre = _nuevaEspecieNombre, TerminoColoquial = _nuevaEspecieTermino });
+        _especies = await EspecieService.ListarAsync();
+        _form.EspecieIds.Add(creada.Id);
+        CancelarNuevaEspecie();
+    }
+}

@@ -1,0 +1,170 @@
+@page "/admin/especies"
+@attribute [Authorize(Roles = "Admin,Empleado")]
+@rendermode InteractiveServer
+@using ProveeduriaGanadera.Application.Especies
+@inject IEspecieService EspecieService
+
+<PageTitle>Especies</PageTitle>
+
+<TituloSeccion Texto="Especies" />
+
+<EditForm Model="_form" OnValidSubmit="Guardar">
+    <div class="row g-2 align-items-end mb-3">
+        <div class="col-auto">
+            <label>Nombre</label>
+            <InputText class="form-control" @bind-Value="_form.Nombre" />
+        </div>
+        <div class="col-auto">
+            <label>Término coloquial</label>
+            <InputText class="form-control" @bind-Value="_form.TerminoColoquial" placeholder="rodeo, majada, piara..." />
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary">@(_editandoId is null ? "Agregar" : "Guardar cambios")</button>
+        </div>
+        @if (_editandoId is not null)
+        {
+            <div class="col-auto">
+                <button type="button" class="btn btn-secondary" @onclick="CancelarEdicion">Cancelar</button>
+            </div>
+        }
+    </div>
+</EditForm>
+
+@if (_mensaje is not null)
+{
+    <div class="alert alert-warning">@_mensaje</div>
+}
+
+@if (_especies is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_especies.Count == 0)
+{
+    <p><em>Todavía no hay especies cargadas.</em></p>
+}
+else
+{
+    <div class="tabla-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th style="cursor:pointer" @onclick='() => Ordenar("Nombre")'>Nombre @Indicador("Nombre")</th>
+                    <th style="cursor:pointer" @onclick='() => Ordenar("TerminoColoquial")'>Término coloquial @Indicador("TerminoColoquial")</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var especie in EspeciesOrdenadas())
+                {
+                    <tr>
+                        <td>@especie.Nombre</td>
+                        <td>@especie.TerminoColoquial</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => Editar(especie)">Editar</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => Eliminar(especie.Id)">Eliminar</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<EspecieDto>? _especies;
+    private EspecieDto _form = new();
+    private int? _editandoId;
+    private string? _mensaje;
+    private string _sortColumna = "Nombre";
+    private bool _sortAscendente = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        _especies = await EspecieService.ListarAsync();
+    }
+
+    private void Ordenar(string columna)
+    {
+        if (_sortColumna == columna)
+        {
+            _sortAscendente = !_sortAscendente;
+        }
+        else
+        {
+            _sortColumna = columna;
+            _sortAscendente = true;
+        }
+    }
+
+    private string Indicador(string columna) => _sortColumna != columna ? "" : (_sortAscendente ? "▲" : "▼");
+
+    private IEnumerable<EspecieDto> EspeciesOrdenadas()
+    {
+        if (_especies is null)
+        {
+            return Enumerable.Empty<EspecieDto>();
+        }
+
+        IEnumerable<EspecieDto> query = _sortColumna switch
+        {
+            "TerminoColoquial" => _sortAscendente ? _especies.OrderBy(e => e.TerminoColoquial) : _especies.OrderByDescending(e => e.TerminoColoquial),
+            _ => _sortAscendente ? _especies.OrderBy(e => e.Nombre) : _especies.OrderByDescending(e => e.Nombre),
+        };
+        return query;
+    }
+
+    private async Task Guardar()
+    {
+        _mensaje = null;
+        if (string.IsNullOrWhiteSpace(_form.Nombre))
+        {
+            _mensaje = "El nombre es obligatorio.";
+            return;
+        }
+
+        if (_editandoId is null)
+        {
+            await EspecieService.CrearAsync(_form);
+        }
+        else
+        {
+            _form.Id = _editandoId.Value;
+            await EspecieService.ActualizarAsync(_form);
+        }
+
+        _form = new();
+        _editandoId = null;
+        await Cargar();
+    }
+
+    private void Editar(EspecieDto especie)
+    {
+        _editandoId = especie.Id;
+        _form = new EspecieDto { Id = especie.Id, Nombre = especie.Nombre, TerminoColoquial = especie.TerminoColoquial };
+    }
+
+    private void CancelarEdicion()
+    {
+        _editandoId = null;
+        _form = new();
+    }
+
+    private async Task Eliminar(int id)
+    {
+        _mensaje = null;
+        var eliminado = await EspecieService.EliminarAsync(id);
+        if (!eliminado)
+        {
+            _mensaje = "No se puede eliminar: hay planteles o productos usando esta especie.";
+            return;
+        }
+
+        await Cargar();
+    }
+}

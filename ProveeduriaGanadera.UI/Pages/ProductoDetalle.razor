@@ -1,0 +1,180 @@
+@page "/catalogo/{Id:int}"
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using ProveeduriaGanadera.Application.Carrito
+@using ProveeduriaGanadera.Application.Productos
+@using ProveeduriaGanadera.UI.Services
+@inject IProductoService ProductoService
+@inject ICarritoService CarritoService
+@inject CarritoNotificador CarritoNotificador
+
+<PageTitle>@(_producto?.Nombre ?? "Producto")</PageTitle>
+
+<a href="catalogo" class="link-volver">&larr; Volver al catálogo</a>
+
+@if (!_cargado)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_producto is null)
+{
+    <p>No encontramos este producto.</p>
+}
+else
+{
+    <div class="detalle-layout">
+        <div class="detalle-galeria">
+            @if (_producto.Imagenes.Count == 0)
+            {
+                <div class="sin-imagen-grande">
+                    <svg viewBox="0 0 24 24" width="48" height="48"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="9" cy="10.5" r="1.4" fill="currentColor"/><path d="M4.5 17.5l5-5 3.5 3.5 3-3 4 4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+                </div>
+            }
+            else
+            {
+                <img src="@_producto.Imagenes[_indiceImagen].RutaArchivo" alt="@_producto.Nombre" class="imagen-grande" />
+                @if (_producto.Imagenes.Count > 1)
+                {
+                    <button type="button" class="flecha-carrusel flecha-izquierda" aria-label="Imagen anterior" @onclick="ImagenAnterior">&#8249;</button>
+                    <button type="button" class="flecha-carrusel flecha-derecha" aria-label="Imagen siguiente" @onclick="ImagenSiguiente">&#8250;</button>
+                    <div class="puntos-carrusel puntos-carrusel-grande">
+                        @for (var i = 0; i < _producto.Imagenes.Count; i++)
+                        {
+                            var indice = i;
+                            <button type="button" class="punto @(indice == _indiceImagen ? "punto-activo" : "")"
+                                    aria-label="Imagen @(indice + 1)" @onclick="() => _indiceImagen = indice"></button>
+                        }
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="detalle-info">
+            <h1 class="fuente-titulo">@_producto.Nombre</h1>
+            <p class="detalle-categoria">
+                @_producto.CategoriaNombre
+                @if (_producto.EspecieNombres.Count > 0)
+                {
+                    @($" · {string.Join(", ", _producto.EspecieNombres)}")
+                }
+            </p>
+            <p class="detalle-descripcion">@_producto.Descripcion</p>
+            <p class="precio-producto">$@_producto.PrecioActual.ToString("N2") <span>/ @_producto.UnidadDeMedida</span></p>
+
+            <AuthorizeView Roles="Cliente">
+                <Authorized>
+                    @if (_cantidadEnCarrito > 0)
+                    {
+                        <div class="selector-cantidad">
+                            <button type="button" @onclick="QuitarUnoAsync">-</button>
+                            <span class="cantidad-actual">@_cantidadEnCarrito</span>
+                            <button type="button" @onclick="AgregarUnoAsync">+</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-primary" @onclick="AgregarUnoAsync">Agregar al carrito</button>
+                    }
+                </Authorized>
+                <NotAuthorized>
+                    <a href="cuenta/ingresar" class="link-login">Iniciá sesión para comprar</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
+
+    private ProductoDto? _producto;
+    private bool _cargado;
+    private int _indiceImagen;
+    private int? _itemPedidoId;
+    private int _cantidadEnCarrito;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _producto = await ProductoService.ObtenerAsync(Id);
+        _cargado = true;
+
+        if (_producto is null)
+        {
+            return;
+        }
+
+        var usuarioId = await ObtenerUsuarioIdAsync();
+        if (usuarioId is not null)
+        {
+            var carrito = await CarritoService.ObtenerAsync(usuarioId.Value);
+            ActualizarDesdeCarrito(carrito);
+        }
+    }
+
+    private async Task AgregarUnoAsync()
+    {
+        var usuarioId = await ObtenerUsuarioIdAsync();
+        if (usuarioId is null)
+        {
+            return;
+        }
+
+        var carrito = await CarritoService.AgregarAsync(usuarioId.Value, Id, 1);
+        ActualizarDesdeCarrito(carrito);
+        CarritoNotificador.Notificar();
+    }
+
+    private async Task QuitarUnoAsync()
+    {
+        var usuarioId = await ObtenerUsuarioIdAsync();
+        if (usuarioId is null || _itemPedidoId is null)
+        {
+            return;
+        }
+
+        var carrito = _cantidadEnCarrito <= 1
+            ? await CarritoService.QuitarAsync(usuarioId.Value, _itemPedidoId.Value)
+            : await CarritoService.ActualizarCantidadAsync(usuarioId.Value, _itemPedidoId.Value, _cantidadEnCarrito - 1);
+
+        ActualizarDesdeCarrito(carrito);
+        CarritoNotificador.Notificar();
+    }
+
+    private void ImagenAnterior()
+    {
+        if (_producto is null)
+        {
+            return;
+        }
+
+        _indiceImagen = (_indiceImagen - 1 + _producto.Imagenes.Count) % _producto.Imagenes.Count;
+    }
+
+    private void ImagenSiguiente()
+    {
+        if (_producto is null)
+        {
+            return;
+        }
+
+        _indiceImagen = (_indiceImagen + 1) % _producto.Imagenes.Count;
+    }
+
+    private void ActualizarDesdeCarrito(CarritoDto carrito)
+    {
+        var item = carrito.Items.FirstOrDefault(i => i.ProductoId == Id);
+        _itemPedidoId = item?.Id;
+        _cantidadEnCarrito = item?.Cantidad ?? 0;
+    }
+
+    private async Task<int?> ObtenerUsuarioIdAsync()
+    {
+        var state = await AuthStateTask;
+        var claim = state.User.FindFirst(ClaimTypes.NameIdentifier);
+        return claim is not null && int.TryParse(claim.Value, out var id) ? id : null;
+    }
+}

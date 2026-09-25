@@ -1,0 +1,26 @@
+.contacto-layout {
+    display: flex;
+    gap: 3rem;
+    flex-wrap: wrap;
+}
+
+.contacto-info,
+.contacto-formulario {
+    flex: 1 1 320px;
+}
+
+.contacto-info h2,
+.contacto-formulario h2 {
+    font-size: 1.3rem;
+    color: var(--verde-profundo);
+    margin-bottom: 1rem;
+}
+
+.contacto-info p {
+    color: var(--tinta-suave);
+    margin: 0.4rem 0;
+}
+
+.contacto-info strong {
+    color: var(--tinta);
+}

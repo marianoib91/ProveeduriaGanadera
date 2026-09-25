@@ -1,0 +1,28 @@
+.tabla-carrito {
+    margin-top: 1.5rem;
+}
+
+.miniatura-carrito {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 6px;
+}
+
+.cantidad-carrito {
+    width: 70px;
+}
+
+.resumen-carrito {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 1.5rem;
+    padding: 1rem 0;
+    border-top: 1px solid var(--borde);
+}
+
+.resumen-carrito span {
+    font-size: 1.05rem;
+    color: var(--tinta);
+}

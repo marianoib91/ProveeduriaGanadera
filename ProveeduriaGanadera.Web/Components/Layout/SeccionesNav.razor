@@ -1,0 +1,29 @@
+@* Lista unica de secciones del sitio, compartida entre NavMenu (barra superior) y el pie
+   de pagina de Home. Se actualiza aca una sola vez y se refleja en los dos lugares,
+   respetando la misma visibilidad segun sesion/rol. Toda seccion nueva va aca. *@
+
+<NavLink class="@ClaseLink" href="" Match="NavLinkMatch.All">Inicio</NavLink>
+<NavLink class="@ClaseLink" href="catalogo">Catálogo</NavLink>
+<NavLink class="@ClaseLink" href="quienes-somos">Quiénes somos</NavLink>
+<NavLink class="@ClaseLink" href="contacto">Contacto</NavLink>
+<AuthorizeView>
+    <Authorized>
+        <button type="button" class="@ClasePlaceholder" disabled title="Próximamente">Pedidos</button>
+        <button type="button" class="@ClasePlaceholder" disabled title="Próximamente">Cuenta corriente</button>
+        <button type="button" class="@ClasePlaceholder" disabled title="Próximamente">Devoluciones</button>
+        <button type="button" class="@ClasePlaceholder" disabled title="Próximamente">Notificaciones</button>
+    </Authorized>
+</AuthorizeView>
+<AuthorizeView Roles="Admin,Empleado">
+    <Authorized>
+        <NavLink class="@ClaseLink" href="admin/productos">Administrar catálogo</NavLink>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    [Parameter]
+    public string ClaseLink { get; set; } = string.Empty;
+
+    [Parameter]
+    public string ClasePlaceholder { get; set; } = string.Empty;
+}

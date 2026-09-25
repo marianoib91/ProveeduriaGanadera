@@ -1,0 +1,19 @@
+.quienes-somos {
+    max-width: 760px;
+    margin: 0 auto 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.qs-bloque h2 {
+    font-size: 1.4rem;
+    color: var(--verde-profundo);
+    margin-bottom: 0.6rem;
+}
+
+.qs-bloque p {
+    color: var(--tinta-suave);
+    line-height: 1.6;
+    margin: 0;
+}

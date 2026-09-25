@@ -1,0 +1,170 @@
+@page "/admin/categorias"
+@attribute [Authorize(Roles = "Admin,Empleado")]
+@rendermode InteractiveServer
+@using ProveeduriaGanadera.Application.Categorias
+@inject ICategoriaService CategoriaService
+
+<PageTitle>Categorías</PageTitle>
+
+<TituloSeccion Texto="Categorías" />
+
+<EditForm Model="_form" OnValidSubmit="Guardar">
+    <div class="row g-2 align-items-end mb-3">
+        <div class="col-auto">
+            <label>Nombre</label>
+            <InputText class="form-control" @bind-Value="_form.Nombre" />
+        </div>
+        <div class="col-auto">
+            <label>Descripción</label>
+            <InputText class="form-control" @bind-Value="_form.Descripcion" />
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary">@(_editandoId is null ? "Agregar" : "Guardar cambios")</button>
+        </div>
+        @if (_editandoId is not null)
+        {
+            <div class="col-auto">
+                <button type="button" class="btn btn-secondary" @onclick="CancelarEdicion">Cancelar</button>
+            </div>
+        }
+    </div>
+</EditForm>
+
+@if (_mensaje is not null)
+{
+    <div class="alert alert-warning">@_mensaje</div>
+}
+
+@if (_categorias is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_categorias.Count == 0)
+{
+    <p><em>Todavía no hay categorías cargadas.</em></p>
+}
+else
+{
+    <div class="tabla-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th style="cursor:pointer" @onclick='() => Ordenar("Nombre")'>Nombre @Indicador("Nombre")</th>
+                    <th style="cursor:pointer" @onclick='() => Ordenar("Descripcion")'>Descripción @Indicador("Descripcion")</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var categoria in CategoriasOrdenadas())
+                {
+                    <tr>
+                        <td>@categoria.Nombre</td>
+                        <td>@categoria.Descripcion</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => Editar(categoria)">Editar</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => Eliminar(categoria.Id)">Eliminar</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<CategoriaDto>? _categorias;
+    private CategoriaDto _form = new();
+    private int? _editandoId;
+    private string? _mensaje;
+    private string _sortColumna = "Nombre";
+    private bool _sortAscendente = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        _categorias = await CategoriaService.ListarAsync();
+    }
+
+    private void Ordenar(string columna)
+    {
+        if (_sortColumna == columna)
+        {
+            _sortAscendente = !_sortAscendente;
+        }
+        else
+        {
+            _sortColumna = columna;
+            _sortAscendente = true;
+        }
+    }
+
+    private string Indicador(string columna) => _sortColumna != columna ? "" : (_sortAscendente ? "▲" : "▼");
+
+    private IEnumerable<CategoriaDto> CategoriasOrdenadas()
+    {
+        if (_categorias is null)
+        {
+            return Enumerable.Empty<CategoriaDto>();
+        }
+
+        IEnumerable<CategoriaDto> query = _sortColumna switch
+        {
+            "Descripcion" => _sortAscendente ? _categorias.OrderBy(c => c.Descripcion) : _categorias.OrderByDescending(c => c.Descripcion),
+            _ => _sortAscendente ? _categorias.OrderBy(c => c.Nombre) : _categorias.OrderByDescending(c => c.Nombre),
+        };
+        return query;
+    }
+
+    private async Task Guardar()
+    {
+        _mensaje = null;
+        if (string.IsNullOrWhiteSpace(_form.Nombre))
+        {
+            _mensaje = "El nombre es obligatorio.";
+            return;
+        }
+
+        if (_editandoId is null)
+        {
+            await CategoriaService.CrearAsync(_form);
+        }
+        else
+        {
+            _form.Id = _editandoId.Value;
+            await CategoriaService.ActualizarAsync(_form);
+        }
+
+        _form = new();
+        _editandoId = null;
+        await Cargar();
+    }
+
+    private void Editar(CategoriaDto categoria)
+    {
+        _editandoId = categoria.Id;
+        _form = new CategoriaDto { Id = categoria.Id, Nombre = categoria.Nombre, Descripcion = categoria.Descripcion };
+    }
+
+    private void CancelarEdicion()
+    {
+        _editandoId = null;
+        _form = new();
+    }
+
+    private async Task Eliminar(int id)
+    {
+        _mensaje = null;
+        var eliminado = await CategoriaService.EliminarAsync(id);
+        if (!eliminado)
+        {
+            _mensaje = "No se puede eliminar: hay productos usando esta categoría.";
+            return;
+        }
+
+        await Cargar();
+    }
+}

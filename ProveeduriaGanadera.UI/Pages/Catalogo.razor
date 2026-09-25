@@ -1,0 +1,317 @@
+@page "/catalogo"
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using ProveeduriaGanadera.Application.Carrito
+@using ProveeduriaGanadera.Application.Categorias
+@using ProveeduriaGanadera.Application.Especies
+@using ProveeduriaGanadera.Application.Productos
+@using ProveeduriaGanadera.UI.Services
+@inject IProductoService ProductoService
+@inject ICategoriaService CategoriaService
+@inject IEspecieService EspecieService
+@inject ICarritoService CarritoService
+@inject CarritoNotificador CarritoNotificador
+
+<PageTitle>Catálogo</PageTitle>
+
+<TituloSeccion Texto="Catálogo" />
+
+@if (_productos is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_productos.Count == 0)
+{
+    <p>Todavía no hay productos cargados.</p>
+}
+else
+{
+    <div class="catalogo-layout">
+        <aside class="filtros-sidebar">
+            <div class="filtros-mobile-bar">
+                <button type="button" class="filtro-tab @(EsGrupoAbierto("categoria") ? "filtro-tab-activo" : "")"
+                        @onclick="@(() => ToggleGrupoMobile("categoria"))">
+                    Categoría <span class="filtro-tab-chevron">@(EsGrupoAbierto("categoria") ? "▲" : "▼")</span>
+                </button>
+                <button type="button" class="filtro-tab @(EsGrupoAbierto("especie") ? "filtro-tab-activo" : "")"
+                        @onclick="@(() => ToggleGrupoMobile("especie"))">
+                    Especie <span class="filtro-tab-chevron">@(EsGrupoAbierto("especie") ? "▲" : "▼")</span>
+                </button>
+            </div>
+
+            <div class="filtro-grupo @(EsGrupoAbierto("categoria") ? "filtro-grupo-abierto" : "")">
+                <h4>Categoría</h4>
+                @foreach (var categoria in _categorias!)
+                {
+                    <label class="filtro-check">
+                        <input type="checkbox" checked="@_categoriasSeleccionadas.Contains(categoria.Id)"
+                               @onchange="@(e => ToggleCategoria(categoria.Id, e.Value))" />
+                        @categoria.Nombre
+                    </label>
+                }
+            </div>
+            <div class="filtro-grupo @(EsGrupoAbierto("especie") ? "filtro-grupo-abierto" : "")">
+                <h4>Especie</h4>
+                @foreach (var especie in _especies!)
+                {
+                    <label class="filtro-check">
+                        <input type="checkbox" checked="@_especiesSeleccionadas.Contains(especie.Id)"
+                               @onchange="@(e => ToggleEspecie(especie.Id, e.Value))" />
+                        @especie.Nombre
+                    </label>
+                }
+            </div>
+        </aside>
+
+        <div class="catalogo-contenido">
+            <div class="catalogo-toolbar">
+                <div class="chips-filtros">
+                    @foreach (var categoriaId in _categoriasSeleccionadas)
+                    {
+                        <span class="chip-filtro">
+                            @_categorias!.First(c => c.Id == categoriaId).Nombre
+                            <button type="button" @onclick="() => ToggleCategoria(categoriaId, false)">&times;</button>
+                        </span>
+                    }
+                    @foreach (var especieId in _especiesSeleccionadas)
+                    {
+                        <span class="chip-filtro">
+                            @_especies!.First(e => e.Id == especieId).Nombre
+                            <button type="button" @onclick="() => ToggleEspecie(especieId, false)">&times;</button>
+                        </span>
+                    }
+                </div>
+                <input type="search" class="form-control form-control-sm busqueda-input" placeholder="Buscar productos..."
+                       @bind="_busqueda" @bind:event="oninput" />
+                <select class="form-select form-select-sm orden-select" @bind="_orden">
+                    <option value="@CriterioOrden.NombreAsc">Nombre: A-Z</option>
+                    <option value="@CriterioOrden.NombreDesc">Nombre: Z-A</option>
+                    <option value="@CriterioOrden.PrecioAsc">Precio: menor a mayor</option>
+                    <option value="@CriterioOrden.PrecioDesc">Precio: mayor a menor</option>
+                </select>
+            </div>
+
+            @{ var productosFiltrados = ObtenerProductosFiltrados(); }
+            @if (productosFiltrados.Count == 0)
+            {
+                <p>No hay productos que coincidan con los filtros elegidos.</p>
+            }
+            else
+            {
+                <div class="grilla-catalogo">
+                    @foreach (var producto in productosFiltrados)
+                    {
+                        <div class="tarjeta-producto">
+                            <div class="carrusel-producto">
+                                @if (producto.Imagenes.Count == 0)
+                                {
+                                    <div class="sin-imagen">
+                                        <svg viewBox="0 0 24 24" width="32" height="32"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="10.5" r="1.6" fill="currentColor"/><path d="M4.5 17.5l5-5 3.5 3.5 3-3 4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+                                    </div>
+                                }
+                                else
+                                {
+                                    var indiceActivo = ObtenerIndiceImagen(producto.Id);
+                                    <img src="@producto.Imagenes[indiceActivo].RutaArchivo" alt="@producto.Nombre" />
+                                    @if (producto.Imagenes.Count > 1)
+                                    {
+                                        <button type="button" class="flecha-carrusel flecha-izquierda" aria-label="Imagen anterior"
+                                                @onclick="() => ImagenAnterior(producto.Id, producto.Imagenes.Count)">&#8249;</button>
+                                        <button type="button" class="flecha-carrusel flecha-derecha" aria-label="Imagen siguiente"
+                                                @onclick="() => ImagenSiguiente(producto.Id, producto.Imagenes.Count)">&#8250;</button>
+                                        <div class="puntos-carrusel">
+                                            @for (var i = 0; i < producto.Imagenes.Count; i++)
+                                            {
+                                                var indice = i;
+                                                <button type="button" class="punto @(indice == indiceActivo ? "punto-activo" : "")"
+                                                        aria-label="Imagen @(indice + 1)"
+                                                        @onclick="() => SeleccionarImagen(producto.Id, indice)"></button>
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+
+                            <div class="info-producto">
+                                <h3 class="fuente-titulo">@producto.Nombre</h3>
+                                <p class="descripcion-producto">@producto.Descripcion</p>
+                                <a href="@($"catalogo/{producto.Id}")" class="link-vermas">Ver más</a>
+                                <p class="precio-producto">$@producto.PrecioActual.ToString("N2") <span>/ @producto.UnidadDeMedida</span></p>
+
+                                <AuthorizeView Roles="Cliente">
+                                    <Authorized>
+                                        @if (_carrito.TryGetValue(producto.Id, out var itemEnCarrito) && itemEnCarrito.Cantidad > 0)
+                                        {
+                                            <div class="selector-cantidad">
+                                                <button type="button" @onclick="() => QuitarUnoAsync(producto.Id)">-</button>
+                                                <span class="cantidad-actual">@itemEnCarrito.Cantidad</span>
+                                                <button type="button" @onclick="() => AgregarUnoAsync(producto.Id)">+</button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="() => AgregarUnoAsync(producto.Id)">Agregar</button>
+                                        }
+                                    </Authorized>
+                                    <NotAuthorized>
+                                        <a href="cuenta/ingresar" class="link-login">Iniciá sesión para comprar</a>
+                                    </NotAuthorized>
+                                </AuthorizeView>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
+
+    private enum CriterioOrden { NombreAsc, NombreDesc, PrecioAsc, PrecioDesc }
+
+    private List<ProductoDto>? _productos;
+    private List<CategoriaDto>? _categorias;
+    private List<EspecieDto>? _especies;
+    private Dictionary<int, ItemCarritoDto> _carrito = new();
+    private readonly Dictionary<int, int> _indiceImagen = new();
+    private readonly HashSet<int> _categoriasSeleccionadas = new();
+    private readonly HashSet<int> _especiesSeleccionadas = new();
+    private CriterioOrden _orden = CriterioOrden.NombreAsc;
+    private string _busqueda = string.Empty;
+    private string? _grupoMobileAbierto;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _productos = (await ProductoService.ListarAsync())
+            .Where(p => p.Activo)
+            .ToList();
+        _categorias = await CategoriaService.ListarAsync();
+        _especies = await EspecieService.ListarAsync();
+
+        var usuarioId = await ObtenerUsuarioIdAsync();
+        if (usuarioId is not null)
+        {
+            var carrito = await CarritoService.ObtenerAsync(usuarioId.Value);
+            _carrito = carrito.Items.ToDictionary(i => i.ProductoId);
+        }
+    }
+
+    private List<ProductoDto> ObtenerProductosFiltrados()
+    {
+        IEnumerable<ProductoDto> query = _productos!;
+
+        if (_categoriasSeleccionadas.Count > 0)
+        {
+            query = query.Where(p => _categoriasSeleccionadas.Contains(p.CategoriaId));
+        }
+
+        if (_especiesSeleccionadas.Count > 0)
+        {
+            query = query.Where(p => p.EspecieIds.Any(_especiesSeleccionadas.Contains));
+        }
+
+        if (!string.IsNullOrWhiteSpace(_busqueda))
+        {
+            query = query.Where(p =>
+                p.Nombre.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ||
+                p.Descripcion.Contains(_busqueda, StringComparison.OrdinalIgnoreCase));
+        }
+
+        query = _orden switch
+        {
+            CriterioOrden.NombreAsc => query.OrderBy(p => p.Nombre),
+            CriterioOrden.NombreDesc => query.OrderByDescending(p => p.Nombre),
+            CriterioOrden.PrecioAsc => query.OrderBy(p => p.PrecioActual),
+            CriterioOrden.PrecioDesc => query.OrderByDescending(p => p.PrecioActual),
+            _ => query,
+        };
+
+        return query.ToList();
+    }
+
+    private bool EsGrupoAbierto(string grupo) => _grupoMobileAbierto == grupo;
+
+    private void ToggleGrupoMobile(string grupo)
+        => _grupoMobileAbierto = _grupoMobileAbierto == grupo ? null : grupo;
+
+    private void ToggleCategoria(int categoriaId, object? valor)
+    {
+        if (valor is true)
+        {
+            _categoriasSeleccionadas.Add(categoriaId);
+        }
+        else
+        {
+            _categoriasSeleccionadas.Remove(categoriaId);
+        }
+    }
+
+    private void ToggleEspecie(int especieId, object? valor)
+    {
+        if (valor is true)
+        {
+            _especiesSeleccionadas.Add(especieId);
+        }
+        else
+        {
+            _especiesSeleccionadas.Remove(especieId);
+        }
+    }
+
+    private async Task AgregarUnoAsync(int productoId)
+    {
+        var usuarioId = await ObtenerUsuarioIdAsync();
+        if (usuarioId is null)
+        {
+            return;
+        }
+
+        var carrito = await CarritoService.AgregarAsync(usuarioId.Value, productoId, 1);
+        _carrito = carrito.Items.ToDictionary(i => i.ProductoId);
+        CarritoNotificador.Notificar();
+    }
+
+    private async Task QuitarUnoAsync(int productoId)
+    {
+        var usuarioId = await ObtenerUsuarioIdAsync();
+        if (usuarioId is null || !_carrito.TryGetValue(productoId, out var item))
+        {
+            return;
+        }
+
+        var carrito = item.Cantidad <= 1
+            ? await CarritoService.QuitarAsync(usuarioId.Value, item.Id)
+            : await CarritoService.ActualizarCantidadAsync(usuarioId.Value, item.Id, item.Cantidad - 1);
+
+        _carrito = carrito.Items.ToDictionary(i => i.ProductoId);
+        CarritoNotificador.Notificar();
+    }
+
+    private int ObtenerIndiceImagen(int productoId)
+        => _indiceImagen.TryGetValue(productoId, out var indice) ? indice : 0;
+
+    private void SeleccionarImagen(int productoId, int indice)
+        => _indiceImagen[productoId] = indice;
+
+    private void ImagenAnterior(int productoId, int totalImagenes)
+    {
+        var actual = ObtenerIndiceImagen(productoId);
+        _indiceImagen[productoId] = (actual - 1 + totalImagenes) % totalImagenes;
+    }
+
+    private void ImagenSiguiente(int productoId, int totalImagenes)
+    {
+        var actual = ObtenerIndiceImagen(productoId);
+        _indiceImagen[productoId] = (actual + 1) % totalImagenes;
+    }
+
+    private async Task<int?> ObtenerUsuarioIdAsync()
+    {
+        var state = await AuthStateTask;
+        var claim = state.User.FindFirst(ClaimTypes.NameIdentifier);
+        return claim is not null && int.TryParse(claim.Value, out var id) ? id : null;
+    }
+}

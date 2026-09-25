@@ -1,0 +1,98 @@
+@page "/carrito"
+@attribute [Authorize(Roles = "Cliente")]
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using ProveeduriaGanadera.Application.Carrito
+@using ProveeduriaGanadera.UI.Services
+@inject ICarritoService CarritoService
+@inject CarritoNotificador CarritoNotificador
+
+<PageTitle>Carrito</PageTitle>
+
+<TituloSeccion Texto="Carrito" />
+
+@if (_carrito is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_carrito.Items.Count == 0)
+{
+    <p>Todavía no agregaste productos. <a href="catalogo">Ver catálogo</a></p>
+}
+else
+{
+    <div class="tabla-responsive">
+        <table class="table tabla-carrito">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Producto</th>
+                    <th>Precio unit.</th>
+                    <th>Cantidad</th>
+                    <th>Subtotal</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in _carrito.Items)
+                {
+                    <tr>
+                        <td>
+                            @if (item.ImagenUrl is not null)
+                            {
+                                <img src="@item.ImagenUrl" alt="@item.ProductoNombre" class="miniatura-carrito" />
+                            }
+                        </td>
+                        <td>@item.ProductoNombre</td>
+                        <td>$@item.PrecioUnitario.ToString("N2")</td>
+                        <td>
+                            <input type="number" min="1" class="form-control form-control-sm cantidad-carrito"
+                                   value="@item.Cantidad" @onchange="@(e => ActualizarCantidadAsync(item.Id, e.Value))" />
+                        </td>
+                        <td>$@item.Subtotal.ToString("N2")</td>
+                        <td>
+                            <button type="button" class="btn btn-outline-danger btn-sm" @onclick="() => QuitarAsync(item.Id)">Quitar</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="resumen-carrito">
+        <span>Total: <strong>$@_carrito.Total.ToString("N2")</strong></span>
+        <button type="button" class="btn btn-primary" disabled title="Próximamente">Confirmar pedido</button>
+    </div>
+}
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
+
+    private CarritoDto? _carrito;
+    private int _usuarioId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthStateTask;
+        _usuarioId = int.Parse(state.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        _carrito = await CarritoService.ObtenerAsync(_usuarioId);
+    }
+
+    private async Task ActualizarCantidadAsync(int itemId, object? valor)
+    {
+        if (!int.TryParse(valor?.ToString(), out var cantidad))
+        {
+            return;
+        }
+
+        _carrito = await CarritoService.ActualizarCantidadAsync(_usuarioId, itemId, cantidad);
+        CarritoNotificador.Notificar();
+    }
+
+    private async Task QuitarAsync(int itemId)
+    {
+        _carrito = await CarritoService.QuitarAsync(_usuarioId, itemId);
+        CarritoNotificador.Notificar();
+    }
+}

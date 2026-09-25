@@ -1,0 +1,92 @@
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using ProveeduriaGanadera.Application.Carrito
+@using ProveeduriaGanadera.UI.Services
+@implements IDisposable
+@inject ICarritoService CarritoService
+@inject CarritoNotificador CarritoNotificador
+@inject NavigationManager Navigation
+
+<header class="topbar">
+    <div class="topbar-inner">
+        <a class="brand" href="">
+            <img src="logo.jpg" alt="Logo" />
+            <span class="brand-text">Proveeduría Ganadera<small>Vedia, Buenos Aires</small></span>
+        </a>
+
+        <input type="checkbox" title="Menu" class="navbar-toggler" id="toggler" @bind="_menuAbierto" />
+        <label class="toggler-label" for="toggler">
+            <svg viewBox="0 0 24 24" width="24" height="24"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </label>
+
+        <nav class="topbar-nav">
+            <SeccionesNav ClaseLink="nav-link" ClasePlaceholder="nav-link nav-placeholder" />
+        </nav>
+
+        <div class="topbar-acciones">
+            <a href="carrito" class="icono-carrito" title="Carrito">
+                <svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 4h2l2.4 12.4a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.6L21 8H6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="21" r="1.4" fill="currentColor"/><circle cx="18" cy="21" r="1.4" fill="currentColor"/></svg>
+                <span class="badge-carrito">@_cantidadCarrito</span>
+            </a>
+            <AuthorizeView>
+                <Authorized>
+                    <span class="usuario-actual">Hola, @context.User.Identity?.Name</span>
+                    <a class="btn btn-outline-secondary btn-sm" href="cuenta/salir">Salir</a>
+                </Authorized>
+                <NotAuthorized>
+                    <a class="btn btn-outline-secondary btn-sm" href="cuenta/ingresar">Ingresar</a>
+                    <a class="btn btn-primary btn-sm" href="cuenta/registrarse">Registrarse</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+    </div>
+</header>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
+
+    private int _cantidadCarrito;
+    private bool _menuAbierto;
+
+    protected override async Task OnInitializedAsync()
+    {
+        CarritoNotificador.CambioCarrito += OnCambioCarrito;
+        Navigation.LocationChanged += OnLocationChanged;
+        await CargarCantidadAsync();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        if (_menuAbierto)
+        {
+            _menuAbierto = false;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task CargarCantidadAsync()
+    {
+        var usuarioId = await ObtenerUsuarioIdAsync();
+        _cantidadCarrito = usuarioId is null ? 0 : await CarritoService.ContarItemsAsync(usuarioId.Value);
+    }
+
+    private async Task<int?> ObtenerUsuarioIdAsync()
+    {
+        var state = await AuthStateTask;
+        var claim = state.User.FindFirst(ClaimTypes.NameIdentifier);
+        return claim is not null && int.TryParse(claim.Value, out var id) ? id : null;
+    }
+
+    private async void OnCambioCarrito()
+    {
+        await CargarCantidadAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        CarritoNotificador.CambioCarrito -= OnCambioCarrito;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}
